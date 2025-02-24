@@ -1,0 +1,17 @@
+name: ExpChange
+version: '1.0'
+main: org.example.bedepay.expchange.ExpChange
+api-version: '1.20'
+commands:
+  expchange:
+    description: Конвертирует опыт игрока в предмет для хранения опыта
+    usage: /<command> [процент]
+    permission: expchange.use
+    permission-message: У вас нет прав на выполнение этой команды.
+permissions:
+  expchange.use:
+    description: Разрешение на использование команды /expchange
+    default: true
+  expchange.admin:
+    description: Разрешение на использование административных команд
+    default: op

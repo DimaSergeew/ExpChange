@@ -1,0 +1,51 @@
+# Комиссия с обмена опыта (например, 0.1 означает 10% комиссии)
+commission: 0.1
+
+# Предмет для хранения опыта
+item:
+  material: BOOK
+  custom_model_data: 0
+
+# Настройки книги
+book:
+  display_name: "§6Хранитель опыта §7(§e%xp%§7)"
+  glowing: true
+  lore:
+    - "§7Содержит §e%xp% §7опыта"
+    - "§7Нажмите ПКМ, чтобы получить опыт"
+  enchantments:
+    - "unbreaking:1"
+
+# Настройки кулдауна
+cooldown: 5 # в секундах
+
+# Максимальное количество опыта в одной книге
+max_xp_per_book: 1000000
+
+# Минимальное количество опыта для конвертации
+min_xp_for_conversion: 100
+
+# Звуковые эффекты
+sound_effects:
+  enabled: true
+  create: ENTITY_EXPERIENCE_ORB_PICKUP
+  use: ENTITY_PLAYER_LEVELUP
+
+# Эффекты частиц
+particle_effects: true
+
+# Сообщения
+messages:
+  no_permission: "§cУ вас нет прав на использование этой команды!"
+  cooldown: "§cПодождите %time% секунд перед следующим использованием!"
+  no_experience: "§cУ вас недостаточно опыта!"
+  exchange_success: |
+    §aКонвертация опыта:
+    §7• Конвертировано: §e%xp_total% §7опыта
+    §7• Комиссия (§6%commission_percent%§7): §e%commission_amount% §7опыта
+    §7• Итого в книге: §e%xp_final% §7опыта
+  use_success: "§aВы получили §e%xp% §aопыта из книги!"
+  invalid_book: "§cЭта книга была изменена и больше не действительна!"
+  too_much_xp: "§cСлишком много опыта в книге!"
+  inventory_full: "§cОсвободите место в инвентаре!"
+  not_enough_xp_for_conversion: "§cМинимальное количество опыта для конвертации: §e%min_xp%"
