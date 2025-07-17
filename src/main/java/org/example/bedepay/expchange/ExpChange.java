@@ -20,6 +20,14 @@ import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.player.PlayerInteractEvent;
+import org.bukkit.event.player.PlayerExpChangeEvent;
+import org.bukkit.event.player.PlayerLevelChangeEvent;
+import org.bukkit.event.player.PlayerQuitEvent;
+import org.bukkit.event.inventory.PrepareAnvilEvent;
+import org.bukkit.event.inventory.PrepareGrindstoneEvent;
+import org.bukkit.event.inventory.PrepareItemCraftEvent;
+import org.bukkit.event.inventory.InventoryClickEvent;
+import org.bukkit.event.inventory.InventoryType;
 import org.bukkit.inventory.ItemFlag;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
@@ -50,6 +58,7 @@ public final class ExpChange extends JavaPlugin implements Listener, TabComplete
     private boolean useTierSystem;
     private Map<String, BookTier> bookTiers = new HashMap<>();
     private Map<UUID, Map<String, Long>> typedCooldowns = new HashMap<>();
+    private Map<UUID, Integer> lastKnownExp = new HashMap<>();
 
     // Класс для тиеров книг
     private class BookTier {
@@ -337,7 +346,7 @@ public final class ExpChange extends JavaPlugin implements Listener, TabComplete
                 return false;
             }
 
-            int totalXp = getTotalExperience(player);
+            int totalXp = getCurrentExperience(player);
             
             // Проверка минимального количества опыта
             if (totalXp < minXpForConversion) {
@@ -679,6 +688,9 @@ public final class ExpChange extends JavaPlugin implements Listener, TabComplete
                 exp = 0;
             }
         }
+        
+        // Обновляем отслеживание опыта
+        lastKnownExp.put(player.getUniqueId(), getTotalExperience(player));
     }
 
     @Override
@@ -817,5 +829,109 @@ public final class ExpChange extends JavaPlugin implements Listener, TabComplete
         }
         
         return xp;
+    }
+
+    // Отслеживание изменений опыта
+    @EventHandler
+    public void onPlayerExpChange(PlayerExpChangeEvent event) {
+        Player player = event.getPlayer();
+        UUID playerUUID = player.getUniqueId();
+        
+        // Обновляем последний известный опыт игрока
+        int currentExp = getTotalExperience(player);
+        lastKnownExp.put(playerUUID, currentExp);
+    }
+
+    // Отслеживание изменений уровня (включая команды /xp)
+    @EventHandler
+    public void onPlayerLevelChange(PlayerLevelChangeEvent event) {
+        Player player = event.getPlayer();
+        UUID playerUUID = player.getUniqueId();
+        
+        // Обновляем последний известный опыт игрока
+        int currentExp = getTotalExperience(player);
+        lastKnownExp.put(playerUUID, currentExp);
+    }
+
+    // Предотвращение использования книг опыта в точиле
+    @EventHandler
+    public void onPrepareGrindstone(PrepareGrindstoneEvent event) {
+        ItemStack topItem = event.getInventory().getItem(0);
+        ItemStack bottomItem = event.getInventory().getItem(1);
+        
+        if ((topItem != null && isValidExpBook(topItem.getItemMeta())) ||
+            (bottomItem != null && isValidExpBook(bottomItem.getItemMeta()))) {
+            event.setResult(null);
+        }
+    }
+
+    // Предотвращение использования книг опыта в наковальне
+    @EventHandler
+    public void onPrepareAnvil(PrepareAnvilEvent event) {
+        ItemStack firstItem = event.getInventory().getItem(0);
+        ItemStack secondItem = event.getInventory().getItem(1);
+        
+        if ((firstItem != null && isValidExpBook(firstItem.getItemMeta())) ||
+            (secondItem != null && isValidExpBook(secondItem.getItemMeta()))) {
+            event.setResult(null);
+        }
+    }
+
+    // Предотвращение использования книг опыта в чар-столе
+    @EventHandler
+    public void onInventoryClick(InventoryClickEvent event) {
+        if (event.getInventory().getType() == InventoryType.ENCHANTING) {
+            ItemStack clickedItem = event.getCurrentItem();
+            if (clickedItem != null && isValidExpBook(clickedItem.getItemMeta())) {
+                event.setCancelled(true);
+                if (event.getWhoClicked() instanceof Player) {
+                    Player player = (Player) event.getWhoClicked();
+                    player.sendMessage("§cКниги опыта нельзя использовать в чар-столе!");
+                }
+            }
+        }
+    }
+
+    // Предотвращение крафта с книгами опыта
+    @EventHandler
+    public void onPrepareItemCraft(PrepareItemCraftEvent event) {
+        ItemStack[] matrix = event.getInventory().getMatrix();
+        for (ItemStack item : matrix) {
+            if (item != null && isValidExpBook(item.getItemMeta())) {
+                event.getInventory().setResult(null);
+                return;
+            }
+        }
+    }
+
+    // Обновленный метод получения опыта с учетом отслеживания
+    private int getCurrentExperience(Player player) {
+        UUID playerUUID = player.getUniqueId();
+        int currentExp = getTotalExperience(player);
+        
+        // Если у нас есть сохраненный опыт, используем его
+        if (lastKnownExp.containsKey(playerUUID)) {
+            int lastExp = lastKnownExp.get(playerUUID);
+            // Если текущий опыт больше сохраненного, обновляем
+            if (currentExp > lastExp) {
+                lastKnownExp.put(playerUUID, currentExp);
+            } else {
+                // Используем сохраненный опыт (может включать опыт от команд)
+                currentExp = lastExp;
+            }
+        } else {
+            // Первый раз видим игрока, сохраняем текущий опыт
+            lastKnownExp.put(playerUUID, currentExp);
+        }
+        
+        return currentExp;
+    }
+
+    // Очистка данных при выходе игрока
+    @EventHandler
+    public void onPlayerQuit(PlayerQuitEvent event) {
+        UUID playerUUID = event.getPlayer().getUniqueId();
+        lastKnownExp.remove(playerUUID);
+        typedCooldowns.remove(playerUUID);
     }
 }
