@@ -97,9 +97,15 @@ public final class ExpChange extends JavaPlugin implements Listener, TabComplete
         }
 
         private Particle getParticle(String name) {
+            if (name == null || name.trim().isEmpty()) {
+                return Particle.ENCHANTMENT_TABLE;
+            }
+            
             try {
-                return Particle.valueOf(name);
+                return Particle.valueOf(name.toUpperCase());
             } catch (IllegalArgumentException e) {
+                // Логируем предупреждение о неизвестной частице
+                ExpChange.this.getLogger().warning("Неизвестная частица: " + name + ", используется ENCHANTMENT_TABLE");
                 return Particle.ENCHANTMENT_TABLE;
             }
         }
@@ -123,11 +129,11 @@ public final class ExpChange extends JavaPlugin implements Listener, TabComplete
             getLogger().severe("Команда 'givexpbook' не найдена! Проверьте файл plugin.yml");
         }
         
-        if (getCommand("help") != null) {
-            getCommand("help").setTabCompleter(this);
-            getCommand("help").setExecutor(this);
+        if (getCommand("exphelp") != null) {
+            getCommand("exphelp").setTabCompleter(this);
+            getCommand("exphelp").setExecutor(this);
         } else {
-            getLogger().severe("Команда 'help' не найдена! Проверьте файл plugin.yml");
+            getLogger().severe("Команда 'exphelp' не найдена! Проверьте файл plugin.yml");
         }
         
         saveDefaultConfig();
@@ -266,14 +272,17 @@ public final class ExpChange extends JavaPlugin implements Listener, TabComplete
 
     @Override
     public void onDisable() {
-        // Очищаем cooldown maps для предотвращения memory leaks
+        // Очищаем все данные для предотвращения memory leaks
         typedCooldowns.clear();
+        lastKnownExp.clear();
+        bookTiers.clear();
+        messages.clear();
         getLogger().info("ExpChange выключен!");
     }
 
     @Override
     public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
-        if (command.getName().equalsIgnoreCase("help") || (command.getName().equalsIgnoreCase("expchange") && (args.length > 0 && args[0].equalsIgnoreCase("help")))) {
+        if (command.getName().equalsIgnoreCase("exphelp") || (command.getName().equalsIgnoreCase("expchange") && (args.length > 0 && args[0].equalsIgnoreCase("help")))) {
             if (!(sender instanceof Player)) {
                 sender.sendMessage("Только игроки могут использовать эту команду.");
                 return false;
@@ -304,7 +313,7 @@ public final class ExpChange extends JavaPlugin implements Listener, TabComplete
                     "§e/expchange <количество> exp §7- Конвертировать указанное количество опыта в книгу",
                     "§e/expchange <количество> lvl §7- Конвертировать опыт для указанных уровней в книгу",
                     "§e/expchange all §7- Конвертировать весь опыт в книгу",
-                    "§e/expchange help §7- Показать это сообщение",
+                    "§e/exphelp §7- Показать это сообщение",
                     "§7§oПример: §e/expchange 1000 exp §7§oсоздаст книгу с 1000 опыта",
                     "§7§oПример: §e/expchange 5 lvl §7§oсоздаст книгу с опытом для 5 уровней",
                     "§6§l==============================="
@@ -516,48 +525,81 @@ public final class ExpChange extends JavaPlugin implements Listener, TabComplete
 
     @EventHandler
     public void onPlayerUseItem(PlayerInteractEvent event) {
-        if (event.getItem() != null && event.getItem().getType() == itemMaterial) {
-            Player player = event.getPlayer();
-            
-            // Проверяем права на использование
-            if (!player.hasPermission("expchange.use")) {
-                return;
-            }
-            
-            ItemMeta meta = event.getItem().getItemMeta();
-            
-            if (meta == null || !isValidExpBook(meta)) {
-                return;
-            }
-            
-            event.setCancelled(true);
-            
-            // Безопасное получение количества опыта с проверкой на null
-            Integer xpAmount = meta.getPersistentDataContainer().get(new NamespacedKey(this, "xp_amount"), PersistentDataType.INTEGER);
-            if (xpAmount == null || xpAmount <= 0) {
-                sendMessage(player, getMessage("invalid_book"));
-                return;
-            }
-            
-            if (xpAmount > maxXpPerBook) {
-                sendMessage(player, getMessage("too_much_xp")
-                    .replace("%max_xp%", String.valueOf(maxXpPerBook)));
-                return;
-            }
-            
+        ItemStack item = event.getItem();
+        if (item == null || item.getType() != itemMaterial) {
+            return;
+        }
+        
+        Player player = event.getPlayer();
+        if (player == null) {
+            return;
+        }
+        
+        // Проверяем права на использование
+        if (!player.hasPermission("expchange.use")) {
+            return;
+        }
+        
+        ItemMeta meta = item.getItemMeta();
+        
+        // Используем улучшенную валидацию
+        if (!isValidExpBook(meta)) {
+            return;
+        }
+        
+        event.setCancelled(true);
+        
+        // Получаем количество опыта (уже проверено в isValidExpBook)
+        Integer xpAmount = meta.getPersistentDataContainer().get(new NamespacedKey(this, "xp_amount"), PersistentDataType.INTEGER);
+        
+        // Дополнительная проверка (хотя она уже есть в isValidExpBook)
+        if (xpAmount == null || xpAmount <= 0) {
+            sendMessage(player, getMessage("invalid_book"));
+            return;
+        }
+        
+        if (xpAmount > maxXpPerBook) {
+            sendMessage(player, getMessage("too_much_xp")
+                .replace("%max_xp%", String.valueOf(maxXpPerBook)));
+            return;
+        }
+        
+        try {
             player.giveExp(xpAmount);
-            event.getItem().setAmount(event.getItem().getAmount() - 1);
+            item.setAmount(item.getAmount() - 1);
             
             playEffects(player, false, xpAmount);
             
             sendMessage(player, getMessage("use_success")
                 .replace("%xp%", String.valueOf(xpAmount)));
+        } catch (Exception e) {
+            getLogger().severe("Ошибка при использовании книги опыта игроком " + player.getName() + ": " + e.getMessage());
+            sendMessage(player, "§cПроизошла ошибка при использовании книги опыта!");
         }
     }
 
     private boolean isValidExpBook(ItemMeta meta) {
-        return meta.getPersistentDataContainer().has(new NamespacedKey(this, "xp_amount"), PersistentDataType.INTEGER) &&
-               (!bookGlowing || meta.hasEnchant(Enchantment.DURABILITY));
+        if (meta == null) {
+            return false;
+        }
+        
+        // Проверяем наличие ключа опыта
+        if (!meta.getPersistentDataContainer().has(new NamespacedKey(this, "xp_amount"), PersistentDataType.INTEGER)) {
+            return false;
+        }
+        
+        // Проверяем корректность количества опыта
+        Integer xpAmount = meta.getPersistentDataContainer().get(new NamespacedKey(this, "xp_amount"), PersistentDataType.INTEGER);
+        if (xpAmount == null || xpAmount <= 0 || xpAmount > maxXpPerBook) {
+            return false;
+        }
+        
+        // Проверяем наличие чар если включен glowing
+        if (bookGlowing && !meta.hasEnchant(Enchantment.DURABILITY)) {
+            return false;
+        }
+        
+        return true;
     }
 
     private String[] replacePlaceholders(String[] lore, int xpAmount) {
@@ -644,10 +686,27 @@ public final class ExpChange extends JavaPlugin implements Listener, TabComplete
     }
 
     private void setCooldown(Player player, String type, int seconds) {
-        if (!typedCooldowns.containsKey(player.getUniqueId())) {
-            typedCooldowns.put(player.getUniqueId(), new HashMap<>());
+        UUID playerUUID = player.getUniqueId();
+        if (!typedCooldowns.containsKey(playerUUID)) {
+            typedCooldowns.put(playerUUID, new HashMap<>());
         }
-        typedCooldowns.get(player.getUniqueId()).put(type, System.currentTimeMillis() + (seconds * 1000L));
+        typedCooldowns.get(playerUUID).put(type, System.currentTimeMillis() + (seconds * 1000L));
+        
+        // Очищаем старые кулдауны при добавлении нового
+        cleanupExpiredCooldowns(playerUUID);
+    }
+    
+    private void cleanupExpiredCooldowns(UUID playerUUID) {
+        Map<String, Long> playerCooldowns = typedCooldowns.get(playerUUID);
+        if (playerCooldowns != null) {
+            long currentTime = System.currentTimeMillis();
+            playerCooldowns.entrySet().removeIf(entry -> entry.getValue() < currentTime);
+            
+            // Если у игрока больше нет активных кулдаунов, удаляем запись
+            if (playerCooldowns.isEmpty()) {
+                typedCooldowns.remove(playerUUID);
+            }
+        }
     }
 
     private long getCooldownTimeLeft(Player player, String type) {
@@ -659,11 +718,18 @@ public final class ExpChange extends JavaPlugin implements Listener, TabComplete
     }
 
     private int getTotalExperience(Player player) {
-        // Используем встроенный метод Bukkit для более точного расчета
-        return player.getTotalExperience();
+        // Правильный расчет общего опыта с учетом уровней и текущего прогресса
+        int level = player.getLevel();
+        float progress = player.getExp();
+        
+        int totalExp = getExpToLevel(level);
+        int expToNextLevel = getExpToNextLevel(level);
+        
+        return totalExp + Math.round(progress * expToNextLevel);
     }
 
     private int getExpToNextLevel(int level) {
+        // Правильные формулы Minecraft для опыта до следующего уровня
         if (level <= 15) {
             return 2 * level + 7;
         } else if (level <= 30) {
@@ -674,12 +740,26 @@ public final class ExpChange extends JavaPlugin implements Listener, TabComplete
     }
 
     private void setTotalExperience(Player player, int exp) {
+        if (exp < 0) {
+            exp = 0;
+        }
+        
         player.setTotalExperience(0);
         player.setLevel(0);
         player.setExp(0);
         
-        while (exp > 0) {
-            int expToLevel = getExpToNextLevel(player.getLevel());
+        int iterations = 0;
+        final int MAX_ITERATIONS = 100; // Защита от бесконечной петли
+        
+        while (exp > 0 && iterations < MAX_ITERATIONS) {
+            int currentLevel = player.getLevel();
+            int expToLevel = getExpToNextLevel(currentLevel);
+            
+            if (expToLevel <= 0) {
+                getLogger().warning("Некорректный расчет опыта для уровня " + currentLevel);
+                break;
+            }
+            
             if (exp >= expToLevel) {
                 exp -= expToLevel;
                 player.giveExp(expToLevel);
@@ -687,6 +767,12 @@ public final class ExpChange extends JavaPlugin implements Listener, TabComplete
                 player.giveExp(exp);
                 exp = 0;
             }
+            
+            iterations++;
+        }
+        
+        if (iterations >= MAX_ITERATIONS) {
+            getLogger().warning("Достигнуто максимальное количество итераций при установке опыта игрока " + player.getName());
         }
         
         // Обновляем отслеживание опыта
@@ -728,7 +814,7 @@ public final class ExpChange extends JavaPlugin implements Listener, TabComplete
             } else if (args.length == 2) {
                 return Arrays.asList("100", "1000", "5000");
             }
-        } else if (command.getName().equalsIgnoreCase("help")) {
+        } else if (command.getName().equalsIgnoreCase("exphelp")) {
             return Arrays.asList("expchange");
         }
         return null;
@@ -756,30 +842,46 @@ public final class ExpChange extends JavaPlugin implements Listener, TabComplete
     }
     
     private void spawnSpiralParticle(Player player, Particle particle, boolean isCreation) {
-        final double radius = 1.0;
-        final int particles = 40;
-        final double height = 2.0;
-        
-        for (int i = 0; i < particles; i++) {
-            double angle = (double) i / particles * Math.PI * 2;
-            double x = Math.cos(angle) * radius;
-            double z = Math.sin(angle) * radius;
-            double y = (double) i / particles * height;
-            
-            player.getWorld().spawnParticle(
-                particle,
-                player.getLocation().add(x, y, z),
-                3, 0.05, 0.05, 0.05, 0.01
-            );
+        if (player == null || player.getWorld() == null || particle == null) {
+            return;
         }
         
-        // Дополнительные эффекты для создания книги
-        if (isCreation) {
-            player.getWorld().spawnParticle(
-                Particle.EXPLOSION_NORMAL,
-                player.getLocation().add(0, 1, 0),
-                10, 0.5, 0.5, 0.5, 0.1
-            );
+        try {
+            final double radius = 1.0;
+            final int particles = 40;
+            final double height = 2.0;
+            
+            for (int i = 0; i < particles; i++) {
+                double angle = (double) i / particles * Math.PI * 2;
+                double x = Math.cos(angle) * radius;
+                double z = Math.sin(angle) * radius;
+                double y = (double) i / particles * height;
+                
+                try {
+                    player.getWorld().spawnParticle(
+                        particle,
+                        player.getLocation().add(x, y, z),
+                        3, 0.05, 0.05, 0.05, 0.01
+                    );
+                } catch (Exception e) {
+                    // Игнорируем ошибки отдельных частиц
+                }
+            }
+            
+            // Дополнительные эффекты для создания книги
+            if (isCreation) {
+                try {
+                    player.getWorld().spawnParticle(
+                        Particle.EXPLOSION_NORMAL,
+                        player.getLocation().add(0, 1, 0),
+                        10, 0.5, 0.5, 0.5, 0.1
+                    );
+                } catch (Exception e) {
+                    // Игнорируем ошибки с дополнительными эффектами
+                }
+            }
+        } catch (Exception e) {
+            getLogger().warning("Ошибка при создании эффектов частиц: " + e.getMessage());
         }
     }
     
@@ -816,19 +918,24 @@ public final class ExpChange extends JavaPlugin implements Listener, TabComplete
         return level;
     }
 
-    // Добавляем метод для расчета опыта, необходимого для достижения указанного уровня
+    // Правильный расчет общего опыта для достижения указанного уровня
     private int getExpToLevel(int targetLevel) {
-        int xp = 0;
-        
-        if (targetLevel <= 16) {
-            xp = (int) (targetLevel * targetLevel + 6 * targetLevel);
-        } else if (targetLevel <= 31) {
-            xp = (int) (2.5 * targetLevel * targetLevel - 40.5 * targetLevel + 360);
-        } else {
-            xp = (int) (4.5 * targetLevel * targetLevel - 162.5 * targetLevel + 2220);
+        if (targetLevel <= 0) {
+            return 0;
         }
         
-        return xp;
+        int totalExp = 0;
+        
+        // Расчет по правильным формулам Minecraft
+        if (targetLevel <= 16) {
+            totalExp = targetLevel * targetLevel + 6 * targetLevel;
+        } else if (targetLevel <= 31) {
+            totalExp = (int) (2.5 * targetLevel * targetLevel - 40.5 * targetLevel + 360);
+        } else {
+            totalExp = (int) (4.5 * targetLevel * targetLevel - 162.5 * targetLevel + 2220);
+        }
+        
+        return Math.max(0, totalExp);
     }
 
     // Отслеживание изменений опыта
@@ -856,6 +963,10 @@ public final class ExpChange extends JavaPlugin implements Listener, TabComplete
     // Предотвращение использования книг опыта в точиле
     @EventHandler
     public void onPrepareGrindstone(PrepareGrindstoneEvent event) {
+        if (event.getInventory() == null) {
+            return;
+        }
+        
         ItemStack topItem = event.getInventory().getItem(0);
         ItemStack bottomItem = event.getInventory().getItem(1);
         
@@ -868,6 +979,10 @@ public final class ExpChange extends JavaPlugin implements Listener, TabComplete
     // Предотвращение использования книг опыта в наковальне
     @EventHandler
     public void onPrepareAnvil(PrepareAnvilEvent event) {
+        if (event.getInventory() == null) {
+            return;
+        }
+        
         ItemStack firstItem = event.getInventory().getItem(0);
         ItemStack secondItem = event.getInventory().getItem(1);
         
@@ -880,27 +995,45 @@ public final class ExpChange extends JavaPlugin implements Listener, TabComplete
     // Предотвращение использования книг опыта в чар-столе
     @EventHandler
     public void onInventoryClick(InventoryClickEvent event) {
-        if (event.getInventory().getType() == InventoryType.ENCHANTING) {
+        if (event.getInventory() == null || event.getInventory().getType() != InventoryType.ENCHANTING) {
+            return;
+        }
+        
+        try {
             ItemStack clickedItem = event.getCurrentItem();
             if (clickedItem != null && isValidExpBook(clickedItem.getItemMeta())) {
                 event.setCancelled(true);
                 if (event.getWhoClicked() instanceof Player) {
                     Player player = (Player) event.getWhoClicked();
-                    player.sendMessage("§cКниги опыта нельзя использовать в чар-столе!");
+                    sendMessage(player, "§cКниги опыта нельзя использовать в чар-столе!");
                 }
             }
+        } catch (Exception e) {
+            getLogger().warning("Ошибка при обработке клика в инвентаре: " + e.getMessage());
         }
     }
 
     // Предотвращение крафта с книгами опыта
     @EventHandler
     public void onPrepareItemCraft(PrepareItemCraftEvent event) {
-        ItemStack[] matrix = event.getInventory().getMatrix();
-        for (ItemStack item : matrix) {
-            if (item != null && isValidExpBook(item.getItemMeta())) {
-                event.getInventory().setResult(null);
+        if (event.getInventory() == null) {
+            return;
+        }
+        
+        try {
+            ItemStack[] matrix = event.getInventory().getMatrix();
+            if (matrix == null) {
                 return;
             }
+            
+            for (ItemStack item : matrix) {
+                if (item != null && isValidExpBook(item.getItemMeta())) {
+                    event.getInventory().setResult(null);
+                    return;
+                }
+            }
+        } catch (Exception e) {
+            getLogger().warning("Ошибка при проверке крафта: " + e.getMessage());
         }
     }
 

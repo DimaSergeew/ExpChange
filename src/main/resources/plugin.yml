@@ -1,5 +1,5 @@
 name: ExpChange
-version: '1.0'
+version: '2.0'
 main: org.example.bedepay.expchange.ExpChange
 api-version: '1.20'
 description: 'Плагин для обмена опыта на книги'
@@ -17,11 +17,10 @@ commands:
     usage: /givexpbook <игрок> <количество>
     permission: expchange.admin
     
-  help:
+  exphelp:
     description: Показать справку по плагину ExpChange
-    usage: /help
+    usage: /exphelp
     permission: expchange.use
-    aliases: [exphelp]
 
 permissions:
   expchange.use:
