@@ -2,16 +2,34 @@ name: ExpChange
 version: '1.0'
 main: org.example.bedepay.expchange.ExpChange
 api-version: '1.20'
+description: 'Плагин для обмена опыта на книги'
+author: BedePay
+
 commands:
   expchange:
-    description: Конвертирует опыт игрока в предмет для хранения опыта
-    usage: /<command> [процент]
+    description: Конвертировать опыт игрока в книгу опыта
+    usage: /expchange <количество> exp|lvl
     permission: expchange.use
-    permission-message: У вас нет прав на выполнение этой команды.
+    aliases: [xpchange, expbook]
+  
+  givexpbook:
+    description: Выдать книгу опыта игроку (админ-команда)
+    usage: /givexpbook <игрок> <количество>
+    permission: expchange.admin
+    
+  help:
+    description: Показать справку по плагину ExpChange
+    usage: /help
+    permission: expchange.use
+    aliases: [exphelp]
+
 permissions:
   expchange.use:
-    description: Разрешение на использование команды /expchange
+    description: Позволяет использовать команду /expchange
     default: true
+  
   expchange.admin:
-    description: Разрешение на использование административных команд
+    description: Доступ к админ-командам
     default: op
+    children:
+      expchange.use: true
