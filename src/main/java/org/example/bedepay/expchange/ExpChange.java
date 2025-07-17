@@ -26,8 +26,8 @@ import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.persistence.PersistentDataType;
 import org.bukkit.plugin.java.JavaPlugin;
 
-import net.md_5.bungee.api.ChatMessageType;
-import net.md_5.bungee.api.chat.TextComponent;
+import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
 
 public final class ExpChange extends JavaPlugin implements Listener, TabCompleter {
 
@@ -38,7 +38,6 @@ public final class ExpChange extends JavaPlugin implements Listener, TabComplete
     private String[] bookLore;
     private String enchantmentName;
     private String[] enchantments;
-    private Map<UUID, Long> cooldowns = new HashMap<>();
     private int cooldownTime;
     private boolean soundEffectsEnabled;
     private String createSound;
@@ -50,6 +49,7 @@ public final class ExpChange extends JavaPlugin implements Listener, TabComplete
     private boolean useActionBar;
     private boolean useTierSystem;
     private Map<String, BookTier> bookTiers = new HashMap<>();
+    private Map<UUID, Map<String, Long>> typedCooldowns = new HashMap<>();
 
     // Класс для тиеров книг
     private class BookTier {
@@ -257,6 +257,8 @@ public final class ExpChange extends JavaPlugin implements Listener, TabComplete
 
     @Override
     public void onDisable() {
+        // Очищаем cooldown maps для предотвращения memory leaks
+        typedCooldowns.clear();
         getLogger().info("ExpChange выключен!");
     }
 
@@ -496,8 +498,8 @@ public final class ExpChange extends JavaPlugin implements Listener, TabComplete
         // Если сообщение содержит маркер действия ActionBar
         if (message.startsWith("@actionbar ")) {
             String actionBarMsg = message.substring("@actionbar ".length());
-            player.spigot().sendMessage(ChatMessageType.ACTION_BAR, 
-                                      new TextComponent(actionBarMsg));
+            // Используем современный API вместо deprecated
+            player.sendActionBar(Component.text(actionBarMsg));
         } else {
             player.sendMessage(message);
         }
@@ -507,6 +509,12 @@ public final class ExpChange extends JavaPlugin implements Listener, TabComplete
     public void onPlayerUseItem(PlayerInteractEvent event) {
         if (event.getItem() != null && event.getItem().getType() == itemMaterial) {
             Player player = event.getPlayer();
+            
+            // Проверяем права на использование
+            if (!player.hasPermission("expchange.use")) {
+                return;
+            }
+            
             ItemMeta meta = event.getItem().getItemMeta();
             
             if (meta == null || !isValidExpBook(meta)) {
@@ -514,9 +522,10 @@ public final class ExpChange extends JavaPlugin implements Listener, TabComplete
             }
             
             event.setCancelled(true);
-            int xpAmount = meta.getPersistentDataContainer().get(new NamespacedKey(this, "xp_amount"), PersistentDataType.INTEGER);
             
-            if (xpAmount <= 0) {
+            // Безопасное получение количества опыта с проверкой на null
+            Integer xpAmount = meta.getPersistentDataContainer().get(new NamespacedKey(this, "xp_amount"), PersistentDataType.INTEGER);
+            if (xpAmount == null || xpAmount <= 0) {
                 sendMessage(player, getMessage("invalid_book"));
                 return;
             }
@@ -603,8 +612,11 @@ public final class ExpChange extends JavaPlugin implements Listener, TabComplete
             displayName = tierColor + "【" + tier.getName() + "】 " + bookDisplayName.replace("%xp%", String.valueOf(xpAmount));
         }
         
-        meta.setDisplayName(displayName);
-        meta.setLore(Arrays.asList(replacePlaceholders(bookLore, xpAmount)));
+        // Используем современный API вместо deprecated методов
+        meta.displayName(LegacyComponentSerializer.legacySection().deserialize(displayName));
+        meta.lore(Arrays.stream(replacePlaceholders(bookLore, xpAmount))
+                .map(LegacyComponentSerializer.legacySection()::deserialize)
+                .toList());
     }
 
     private void applyGlowing(ItemMeta meta) {
@@ -638,22 +650,8 @@ public final class ExpChange extends JavaPlugin implements Listener, TabComplete
     }
 
     private int getTotalExperience(Player player) {
-        int level = player.getLevel();
-        int exp = 0;
-        
-        if (level <= 16) {
-            exp = (int) (Math.pow(level, 2) + 6 * level);
-        } else if (level <= 31) {
-            exp = (int) (2.5 * Math.pow(level, 2) - 40.5 * level + 360);
-        } else {
-            exp = (int) (4.5 * Math.pow(level, 2) - 162.5 * level + 2220);
-        }
-        
-        float levelProgress = player.getExp();
-        int currentLevelExp = getExpToNextLevel(level);
-        exp += Math.round(currentLevelExp * levelProgress);
-        
-        return exp;
+        // Используем встроенный метод Bukkit для более точного расчета
+        return player.getTotalExperience();
     }
 
     private int getExpToNextLevel(int level) {
@@ -804,22 +802,6 @@ public final class ExpChange extends JavaPlugin implements Listener, TabComplete
         }
         
         return level;
-    }
-
-    // Добавляем новые методы для работы с разными типами кулдаунов
-    private Map<UUID, Map<String, Long>> typedCooldowns = new HashMap<>();
-
-    // Обновляем старые методы кулдауна, чтобы они использовали новую систему
-    private boolean hasCooldown(Player player) {
-        return hasCooldown(player, "expchange");
-    }
-
-    private void setCooldown(Player player) {
-        setCooldown(player, "expchange", cooldownTime);
-    }
-
-    private long getCooldownTimeLeft(Player player) {
-        return getCooldownTimeLeft(player, "expchange");
     }
 
     // Добавляем метод для расчета опыта, необходимого для достижения указанного уровня
