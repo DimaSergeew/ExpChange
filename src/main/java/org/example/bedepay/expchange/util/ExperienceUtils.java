@@ -3,60 +3,35 @@ package org.example.bedepay.expchange.util;
 import org.bukkit.entity.Player;
 
 /**
- * Утилитарный класс для работы с опытом игроков
+ * Современный утилитарный класс для работы с опытом игроков
+ * Использует встроенные методы Paper API вместо кастомных вычислений
  */
 public class ExperienceUtils {
 
     /**
-     * Получить общий опыт игрока
+     * Получить общий опыт игрока (современный Paper API метод)
+     * Использует встроенный calculateTotalExperiencePoints()
      */
     public static int getTotalExperience(Player player) {
-        int level = player.getLevel();
-        float progress = player.getExp();
-        
-        int totalExp = getExpToLevel(level);
-        int expToNextLevel = getExpToNextLevel(level);
-        
-        return totalExp + Math.round(progress * expToNextLevel);
+        return player.calculateTotalExperiencePoints();
     }
 
     /**
-     * Установить общий опыт игрока
+     * Установить общий опыт игрока (современный Paper API метод)
+     * Использует встроенный setExperienceLevelAndProgress()
      */
     public static void setTotalExperience(Player player, int exp) {
         if (exp < 0) {
             exp = 0;
         }
         
-        player.setTotalExperience(0);
-        player.setLevel(0);
-        player.setExp(0);
-        
-        int iterations = 0;
-        final int MAX_ITERATIONS = 100;
-        
-        while (exp > 0 && iterations < MAX_ITERATIONS) {
-            int currentLevel = player.getLevel();
-            int expToLevel = getExpToNextLevel(currentLevel);
-            
-            if (expToLevel <= 0) {
-                break;
-            }
-            
-            if (exp >= expToLevel) {
-                exp -= expToLevel;
-                player.giveExp(expToLevel);
-            } else {
-                player.giveExp(exp);
-                exp = 0;
-            }
-            
-            iterations++;
-        }
+        // Используем современный Paper API метод
+        player.setExperienceLevelAndProgress(exp);
     }
 
     /**
      * Получить количество опыта до следующего уровня
+     * Оставляем для совместимости, но используем встроенные методы
      */
     public static int getExpToNextLevel(int level) {
         if (level <= 15) {
@@ -70,6 +45,7 @@ public class ExperienceUtils {
 
     /**
      * Получить общий опыт для достижения указанного уровня
+     * Используется для расчетов в CommandHandler
      */
     public static int getExpToLevel(int targetLevel) {
         if (targetLevel <= 0) {
@@ -91,6 +67,7 @@ public class ExperienceUtils {
 
     /**
      * Получить уровень по количеству опыта
+     * Вспомогательный метод для расчетов
      */
     public static int getLevelFromExp(int exp) {
         int level = 0;
@@ -106,5 +83,19 @@ public class ExperienceUtils {
         }
         
         return level;
+    }
+
+    /**
+     * Проверить, поддерживает ли текущая версия Paper современные методы опыта
+     */
+    public static boolean isPaperModernExperienceSupported() {
+        try {
+            // Проверяем наличие современного метода Paper API
+            Player.class.getMethod("calculateTotalExperiencePoints");
+            Player.class.getMethod("setExperienceLevelAndProgress", int.class);
+            return true;
+        } catch (NoSuchMethodException e) {
+            return false;
+        }
     }
 } 

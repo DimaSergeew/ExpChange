@@ -5,6 +5,8 @@ import org.bukkit.plugin.java.JavaPlugin;
 import org.example.bedepay.expchange.handler.CommandHandler;
 import org.example.bedepay.expchange.handler.ExpChangeEventHandler;
 import org.example.bedepay.expchange.manager.*;
+import org.example.bedepay.expchange.util.ExperienceUtils;
+
 public final class ExpChange extends JavaPlugin {
 
     // Менеджеры
@@ -36,6 +38,9 @@ public final class ExpChange extends JavaPlugin {
         saveDefaultConfig();
         configManager.loadConfig();
         messageManager.loadMessages();
+        
+        // Проверка поддержки современных Paper API методов
+        checkPaperApiSupport();
         
         // Отображение баннера
         displayBanner();
@@ -91,6 +96,17 @@ public final class ExpChange extends JavaPlugin {
         }
     }
 
+    private void checkPaperApiSupport() {
+        if (ExperienceUtils.isPaperModernExperienceSupported()) {
+            getLogger().info("✓ Обнаружены современные Paper API методы опыта (calculateTotalExperiencePoints, setExperienceLevelAndProgress)");
+            getLogger().info("✓ Используются оптимизированные встроенные методы вместо кастомных вычислений");
+        } else {
+            getLogger().warning("⚠ Современные Paper API методы опыта не обнаружены");
+            getLogger().warning("⚠ Возможно, используется устаревшая версия сервера");
+            getLogger().warning("⚠ Рекомендуется обновить до последней версии Paper");
+        }
+    }
+
     private void displayBanner() {
         String[] banner = {
             "§b╔═══════════════════════════════════════════════════════╗",
@@ -104,11 +120,11 @@ public final class ExpChange extends JavaPlugin {
             "§b║                                                       ║",
             "§b║           §fВерсия: §a" + this.getDescription().getVersion() + "    §fАвтор: §aBedePay§b           ║",
             "§b║                                                       ║",
-            "§b║           §6Новые возможности:                        §b║",
+            "§b║           §6Новые возможности v2.0:                   §b║",
             "§b║           §7• Команда /expchange 30 lvl all           §b║",
+            "§b║           §7• Современные Paper API методы опыта      §b║",
+            "§b║           §7• Adventure API компоненты сообщений      §b║",
             "§b║           §7• Улучшенная защита от дюпов              §b║",
-            "§b║           §7• Оптимизированная архитектура            §b║",
-            "§b║           §7• Современные Paper API методы            §b║",
             "§b╚═══════════════════════════════════════════════════════╝"
         };
         

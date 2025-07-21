@@ -96,14 +96,14 @@ public class ExpChangeEventHandler implements Listener {
         }
     }
 
-    // Отслеживание изменений опыта
+    // Отслеживание изменений опыта (современный Paper API)
     @EventHandler
     public void onPlayerExpChange(PlayerExpChangeEvent event) {
         Player player = event.getPlayer();
         UUID playerUUID = player.getUniqueId();
         
-        // Обновляем последний известный опыт игрока
-        int currentExp = ExperienceUtils.getTotalExperience(player);
+        // Используем современный Paper API метод для получения опыта
+        int currentExp = player.calculateTotalExperiencePoints();
         lastKnownExp.put(playerUUID, currentExp);
     }
 
@@ -113,8 +113,8 @@ public class ExpChangeEventHandler implements Listener {
         Player player = event.getPlayer();
         UUID playerUUID = player.getUniqueId();
         
-        // Обновляем последний известный опыт игрока
-        int currentExp = ExperienceUtils.getTotalExperience(player);
+        // Используем современный Paper API метод для получения опыта
+        int currentExp = player.calculateTotalExperiencePoints();
         lastKnownExp.put(playerUUID, currentExp);
     }
 
